@@ -43,6 +43,7 @@ public class Shadows
         dirShadowMatricesId = Shader.PropertyToID("_DirectionalShadowMatrices"),
         otherShadowAtlasId = Shader.PropertyToID("_OtherShadowAtlas"),
         otherShadowMatricesId = Shader.PropertyToID("_OtherShadowMatrices"),
+        otherShadowTilesId = Shader.PropertyToID("_OtherShadowTiles"),
         cascadeCountId = Shader.PropertyToID("_CascadeCount"),
         cascadeCullingSpheresId = Shader.PropertyToID("_CascadeCullingSpheres"),
         cascadeDataId = Shader.PropertyToID("_CascadeData"),
@@ -54,9 +55,10 @@ public class Shadows
         dirShadowMatrices = new Matrix4x4[maxShadowedDirectionalLightCount * maxCascades],
         otherShadowMatrices = new Matrix4x4[maxShadowedOtherLightCount];
 
-    static Vector4[]
+    private static Vector4[]
         cascadeCullingSpheres = new Vector4[maxCascades],
-        cascadeData = new Vector4[maxCascades];
+        cascadeData = new Vector4[maxCascades],
+        otherShadowTiles = new Vector4[maxShadowedOtherLightCount];
 
     static string[] directionalFilterKeywords = {
         "_DIRECTIONAL_PCF3",
@@ -362,10 +364,12 @@ public class Shadows
         //m.m13 = 0.5f * (m.m13 + m.m33);
 
         float scale = 1f / split;
+        
         m.m00 = (0.5f * (m.m00 + m.m30) + offset.x * m.m30) * scale;
         m.m01 = (0.5f * (m.m01 + m.m31) + offset.x * m.m31) * scale;
         m.m02 = (0.5f * (m.m02 + m.m32) + offset.x * m.m32) * scale;
         m.m03 = (0.5f * (m.m03 + m.m33) + offset.x * m.m33) * scale;
+        
         m.m10 = (0.5f * (m.m10 + m.m30) + offset.y * m.m30) * scale;
         m.m11 = (0.5f * (m.m11 + m.m31) + offset.y * m.m31) * scale;
         m.m12 = (0.5f * (m.m12 + m.m32) + offset.y * m.m32) * scale;
@@ -418,6 +422,7 @@ public class Shadows
         }
         
         buffer.SetGlobalMatrixArray(otherShadowMatricesId, otherShadowMatrices);
+        buffer.SetGlobalVectorArray(otherShadowTilesId, otherShadowTiles);
         SetKeywords(otherFilterKeywords, (int)shadowSettings.other.filter - 1);//采样shadowmap时进行PCF过滤
         
         buffer.EndSample(bufferName);
@@ -430,7 +435,16 @@ public class Shadows
         var shadow_drawing_settings = new ShadowDrawingSettings(cullingResults, light.visibleLightIndex);
         cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(light.visibleLightIndex, out Matrix4x4 viewMatrix, out Matrix4x4 projMatrix, out ShadowSplitData splitData);
         shadow_drawing_settings.splitData = splitData;
-        otherShadowMatrices[index] = ConvertToAtlasMatrix(projMatrix * viewMatrix, SetTileViewport(index, split, tileSize), split);
+        
+        //在聚光灯光源位置使用透视投影渲染场景深度
+        //聚光灯使用透视投影来渲染shadowmap
+        //使用normal bias处理shadow acne
+        float texelSize = 2f / (tileSize * projMatrix.m00);
+        float filterSize = texelSize * ((float)shadowSettings.other.filter + 1f);
+        float bias = light.normalBias * filterSize * 1.4142136f;
+        SetOtherTileData(index, bias);
+        otherShadowMatrices[index] = ConvertToAtlasMatrix(projMatrix * viewMatrix, SetTileViewport(index, split, tileSize), split);// tileScale
+        
         buffer.SetViewProjectionMatrices(viewMatrix, projMatrix);
         buffer.SetGlobalDepthBias(0f, light.slopeScaleBias);
         ExecuteBuffer();
@@ -441,5 +455,12 @@ public class Shadows
     void RenderPointShadows()
     {
         
+    }
+
+    void SetOtherTileData(int index, float bias)
+    {
+        Vector4 data = Vector4.zero;
+        data.w = bias;
+        otherShadowTiles[index] = data;
     }
 }

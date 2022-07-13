@@ -40,6 +40,7 @@ CBUFFER_START(_CustomShadows)
 	float4 _CascadeData[MAX_CASCADE_COUNT];
 	float4x4 _DirectionalShadowMatrices[MAX_SHADOWED_DIRECTIONAL_LIGHT_COUNT * MAX_CASCADE_COUNT];
 	float4x4 _OtherShadowMatrices[MAX_SHADOWED_OTHER_LIGHT_COUNT];
+	float4 _OtherShadowTiles[MAX_SHADOWED_OTHER_LIGHT_COUNT];
 	float4 _ShadowAtlasSize;
 	float4 _ShadowDistanceFade;
 CBUFFER_END
@@ -59,6 +60,8 @@ struct OtherShadowData
 	float strength;
 	int tileIndex;
 	int shadowMaskChannel;
+	float3 lightPositionWS;
+	float3 spotDirectionWS;
 };
 
 struct ShadowMask
@@ -232,10 +235,15 @@ float GetDirectionalShadowAttenuation(DirectionalShadowData directional, ShadowD
 
 float GetOtherShadow(OtherShadowData other, ShadowData global, Surface surfaceWS)
 {
-	float3 normalBias = surfaceWS.interpolatedNormal * 0.0;
+	float4 tileData = _OtherShadowTiles[other.tileIndex];
+
+	//将片段到光源向量与聚光灯朝向进行点乘 得到片段到光源平面的距离
+	float3 surfaceToLight = other.lightPositionWS - surfaceWS.position;
+	float3 distanceToLightPlane = dot(surfaceToLight, other.spotDirectionWS);
+	
+	float3 normalBias = surfaceWS.interpolatedNormal * (distanceToLightPlane * tileData.w);
 	float4 positionSTS = mul(_OtherShadowMatrices[other.tileIndex], float4(surfaceWS.position + normalBias, 1.0));
-	//return FilterOtherShadow(positionSTS.xyz / positionSTS.w);
-	return SampleOtherShadowAtlas(positionSTS);
+	return FilterOtherShadow(positionSTS.xyz / positionSTS.w);
 }
 
 float GetOtherShadowAttenuation(OtherShadowData other_shadow_data, ShadowData global, Surface surfaceWS)
