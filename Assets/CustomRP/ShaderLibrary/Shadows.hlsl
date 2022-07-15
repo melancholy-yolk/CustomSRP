@@ -59,8 +59,10 @@ struct OtherShadowData
 {
 	float strength;
 	int tileIndex;
+	bool isPoint;
 	int shadowMaskChannel;
 	float3 lightPositionWS;
+	float3 lightDirectionWS;
 	float3 spotDirectionWS;
 };
 
@@ -234,16 +236,37 @@ float GetDirectionalShadowAttenuation(DirectionalShadowData directional, ShadowD
     return shadow;
 }
 
+//平面法线必须指向与平面相反的方向，就像聚光灯方向指向灯光一样
+static const float3 point_shadow_planes[6] = {
+	float3(-1.0, 0.0, 0.0),//右侧
+	float3(1.0, 0.0, 0.0),
+	float3(0.0, -1.0, 0.0),
+	float3(0.0, 1.0, 0.0),
+	float3(0.0, 0.0, -1.0),
+	float3(0.0, 0.0, 1.0),	
+};
+
 float GetOtherShadow(OtherShadowData other, ShadowData global, Surface surfaceWS)
 {
-	float4 tileData = _OtherShadowTiles[other.tileIndex];
+	float tileIndex = other.tileIndex;//这个光源的瓦片起始索引（点光源有6个瓦片）
+	float3 lightPlane = other.spotDirectionWS;
+
+	//如果是点光源 计算出此片段应该采样点光源阴影cubemap的哪一面
+	if (other.isPoint)
+	{
+		float face_offset = CubeMapFaceID(-other.lightDirectionWS);
+		tileIndex += face_offset;
+		lightPlane = point_shadow_planes[face_offset];
+	}
+	
+	float4 tileData = _OtherShadowTiles[tileIndex];
 
 	//将片段到光源向量与聚光灯朝向进行点乘 得到片段到光源平面的距离
 	float3 surfaceToLight = other.lightPositionWS - surfaceWS.position;
-	float3 distanceToLightPlane = dot(surfaceToLight, other.spotDirectionWS);
+	float3 distanceToLightPlane = dot(surfaceToLight, lightPlane);
 	
 	float3 normalBias = surfaceWS.interpolatedNormal * (distanceToLightPlane * tileData.w);
-	float4 positionSTS = mul(_OtherShadowMatrices[other.tileIndex], float4(surfaceWS.position + normalBias, 1.0));
+	float4 positionSTS = mul(_OtherShadowMatrices[tileIndex], float4(surfaceWS.position + normalBias, 1.0));
 	return FilterOtherShadow(positionSTS.xyz / positionSTS.w, tileData.xyz);
 }
 
