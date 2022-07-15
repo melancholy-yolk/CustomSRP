@@ -422,6 +422,7 @@ public class Shadows
         atlasSizes.z = atlasSize;
         atlasSizes.w = 1f / atlasSize;
         
+        //申请RT 设置RenderTarget 设置Viewport
         buffer.GetTemporaryRT(otherShadowAtlasId, atlasSize, atlasSize, 32, FilterMode.Bilinear, RenderTextureFormat.Shadowmap);
         buffer.SetRenderTarget(otherShadowAtlasId, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store);
         buffer.ClearRenderTarget(true, false, Color.clear);
@@ -430,13 +431,14 @@ public class Shadows
         ExecuteBuffer();
 
         int tiles = shadowedOtherLightCount;
-        int split = tiles <= 1 ? 1 : (tiles <= 4 ? 2 : 4);
+        int split = tiles <= 1 ? 1 : (tiles <= 4 ? 2 : 4);//根据光源数量来决定将阴影贴图划分几次
         int tileSize = atlasSize / split;
 
         for (int i = 0; i < shadowedOtherLightCount;)
         {
             if (shadowedOtherLights[i].isPoint)
             {
+                //每个点光源需要6个tile
                 RenderPointShadows(i, split, tileSize);
                 i += 6;
             }
@@ -485,25 +487,36 @@ public class Shadows
         ShadowedOtherLight light = shadowedOtherLights[index];
         var drawShadowSettings = new ShadowDrawingSettings(cullingResults, light.visibleLightIndex);
         
-        //计算世界空间纹素尺寸
+        //计算tile上每个纹素在世界空间中的尺寸
         float texelSize = 2f / tileSize;
         float filterSize = texelSize * ((float)shadowSettings.other.filter + 1);
         float bias = light.normalBias * filterSize * 1.4142136f;
         float tileScale = 1f / split;
+
+        //增加点光源阴影渲染时透视投影矩阵的fov值 使得距离光源1m处的tile的世界空间大小大于2
+        float fov_bias = Mathf.Atan(1f + bias + filterSize) * Mathf.Rad2Deg * 2f - 90f;
         
         for (int i = 0; i < 6; i++)
         {
             cullingResults.ComputePointShadowMatricesAndCullingPrimitives(
                 light.visibleLightIndex,
                 (CubemapFace)i,
-                0f,
+                fov_bias,
                 out Matrix4x4 viewMatrix,
                 out Matrix4x4 projMatrix,
                 out ShadowSplitData splitData
                 );
+            // 发生这种情况是因为Unity为点光源渲染阴影的方式。它将它们上下颠倒，从而颠倒了三角形的缠绕顺序。
+            // 通常，从光的角度绘制正面，但是现在可以绘制背面。这可以防止大多数粉刺，但会引起漏光。
+            // 我们不能阻止翻转，但是可以通过对从ComputePointShadowMatricesAndCullingPrimitives中获得的视图矩阵进行取反来撤消翻转。
+            // 让我们取反它的第二行。这第二次将图集中的所有内容颠倒过来，从而使所有内容恢复正常。因为该行的第一个成分始终为零，所以我们只需将其他三个成分取反即可。
+            viewMatrix.m11 = -viewMatrix.m11;
+            viewMatrix.m12 = -viewMatrix.m12;
+            viewMatrix.m13 = -viewMatrix.m13;
             drawShadowSettings.splitData = splitData;
-            int tileIndex = index + 1;//每个点光源的阴影需要6张tile
+            int tileIndex = index + i;//每个点光源的阴影需要6张tile
             
+            //计算阴影贴图每个纹理元素在世界空间中的size
             //float texelSize = 2f / (tileSize * projMatrix.m00);
             //float filterSize = texelSize * ((float)shadowSettings.other.filter + 1);
             //float bias = light.normalBias * filterSize * 1.4142136f;
@@ -531,9 +544,9 @@ public class Shadows
     {
         float border = atlasSizes.w * 0.5f;
         Vector4 data = Vector4.zero;
-        //data.x = offset.x * scale + border;
-        //data.y = offset.y * scale + border;
-        //data.z = scale - border - border;
+        data.x = offset.x * scale + border;
+        data.y = offset.y * scale + border;
+        data.z = scale - border - border;
         data.w = bias;
         otherShadowTiles[index] = data;
     }
