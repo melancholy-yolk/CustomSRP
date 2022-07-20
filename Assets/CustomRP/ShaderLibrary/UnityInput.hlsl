@@ -7,6 +7,7 @@ CBUFFER_START(UnityPerDraw)
 	float4x4 unity_WorldToObject;
 	float4 unity_LODFade;
 	real4 unity_WorldTransformParams;//物体缩放的奇偶性
+	float4 _ProjectionParams;//x分量表明纹理坐标的v方向
 
 	// Lights Per Object
 	real4 unity_LightData;// Y分量代表灯光数量

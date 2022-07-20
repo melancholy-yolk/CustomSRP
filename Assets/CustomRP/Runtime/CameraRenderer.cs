@@ -17,7 +17,10 @@ public partial class CameraRenderer
 
     Lighting lighting = new Lighting();
 
-    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, bool useLightsPerObject, ShadowSettings shadowSettings)
+    PostFXStack postFXStack = new PostFXStack();
+    private static int frame_buffer_id = Shader.PropertyToID("_CameraFrameBuffer");
+
+    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, bool useLightsPerObject, ShadowSettings shadowSettings, PostFXSettings postFXSettings)
     {
         this.context = context;
         this.camera = camera;
@@ -33,13 +36,19 @@ public partial class CameraRenderer
         buffer.BeginSample(SampleName);
         ExecuteBuffer();
         lighting.Setup(context, cullingResults, shadowSettings, useLightsPerObject);//CPU将光源数据发送到GPU
+        postFXStack.Setup(context, camera, postFXSettings);
         buffer.EndSample(SampleName);
         
         SetUp();//将相机数据发送到GPU clear
         DrawVisibleGeometry(useDynamicBatching, useGPUInstancing, useLightsPerObject);//绘制可见几何体
         DrawUnsupportedShaders();
-        DrawGizmos();
-        lighting.Cleanup();
+        DrawGizmosBeforeFX();
+        if (postFXStack.IsActive)
+        {
+            postFXStack.Render(frame_buffer_id);
+        }
+        DrawGizmosAfterFX();
+        Cleanup();
         Submit();
     }
 
@@ -86,6 +95,19 @@ public partial class CameraRenderer
     void SetUp()
     {
         context.SetupCameraProperties(camera);//设置VP矩阵 lookat perspective_project
+        CameraClearFlags clearFlags = camera.clearFlags;
+
+        if (postFXStack.IsActive)
+        {
+            if (clearFlags > CameraClearFlags.Color)
+            {
+                clearFlags = CameraClearFlags.Color;
+            }
+            buffer.GetTemporaryRT(frame_buffer_id, camera.pixelWidth, camera.pixelHeight, 32, FilterMode.Bilinear, RenderTextureFormat.Default);
+            buffer.SetRenderTarget(frame_buffer_id, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store);
+        }
+        
+        
         buffer.ClearRenderTarget(true, true, Color.clear);
         buffer.BeginSample(SampleName);
         ExecuteBuffer();
@@ -116,4 +138,13 @@ public partial class CameraRenderer
         return false;
     }
 
+    void Cleanup()
+    {
+        lighting.Cleanup();
+        if (postFXStack.IsActive)
+        {
+            buffer.ReleaseTemporaryRT(frame_buffer_id);
+        }
+    }
+    
 }
