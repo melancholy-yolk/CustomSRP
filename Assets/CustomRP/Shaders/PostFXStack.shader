@@ -35,12 +35,34 @@
         
         Pass
         {
-            Name "Bloom Combine"
+            Name "Bloom Combine Add"
             
             HLSLPROGRAM
                 #pragma target 3.5
                 #pragma vertex DefaultPassVertex
                 #pragma fragment BloomCombinePassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Bloom Combine Scatter"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment BloomScatterPassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Bloom Combine Scatter Final"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment BloomScatterFinalPassFragment
             ENDHLSL
         }
         
@@ -63,6 +85,17 @@
                 #pragma target 3.5
                 #pragma vertex DefaultPassVertex
                 #pragma fragment CopyPassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Bloom Prefilter Fireflies"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment BloomPrefilterFirefliesPassFragment
             ENDHLSL
         }
     }

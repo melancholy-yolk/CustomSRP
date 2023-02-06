@@ -1,6 +1,7 @@
 #ifndef CUSTOM_POST_FX_PASSES_INCLUDED
 #define CUSTOM_POST_FX_PASSES_INCLUDED
 
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
 
 struct Varyings {
@@ -40,6 +41,7 @@ float4 GetSource2(float2 screenUV)
 
 Varyings DefaultPassVertex (uint vertexID : SV_VertexID) 
 {
+	//不从CPU传递顶点数据 完全在GPU端生成顶点数据
 	Varyings output;
 	output.positionCS = float4(
 		vertexID <= 1 ? -1.0 : 3.0,
@@ -117,6 +119,20 @@ float4 BloomCombinePassFragment(Varyings input) : SV_Target
 	return float4(lowRes * _BloomIntensity + highRes, 1.0);
 }
 
+float4 BloomScatterPassFragment (Varyings input) : SV_TARGET {
+	float3 lowRes;
+	if (_BloomBicubicUpsampling) {
+		lowRes = GetSourceBicubic(input.screenUV).rgb;
+	}
+	else {
+		lowRes = GetSource(input.screenUV).rgb;
+	}
+	float3 highRes = GetSource2(input.screenUV).rgb;
+	return float4(lerp(highRes, lowRes, _BloomIntensity), 1.0);
+}
+
+
+
 // x = t
 // y = -t + tk
 // z = 2tk
@@ -138,6 +154,56 @@ float4 BloomPrefilterPassFragment(Varyings input) : SV_TARGET
 {
 	float3 color = ApplyBloomThreshold(GetSource(input.screenUV).rgb);
 	return float4(color, 1.0);
+}
+
+float4 BloomPrefilterFirefliesPassFragment(Varyings input) : SV_TARGET
+{
+	// float3 color = 0.0;
+	// float2 offsets[] = {
+	// 	float2(0.0, 0.0),
+	// 	float2(-1.0, -1.0), float2(-1.0, 1.0), float2(1.0, -1.0), float2(1.0, 1.0),
+	// 	float2(-1.0, 0.0), float2(1.0, 0.0), float2(0.0, -1.0), float2(0.0, 1.0)
+	// };
+	// for (int i = 0; i < 9; i++)
+	// {
+	// 	float3 c = GetSource(input.screenUV + offsets[i] * GetSourceTexelSize().xy * 2.0).rgb;
+	// 	c = ApplyBloomThreshold(c);
+	// 	color += c;
+	// }
+	// color *= 1.0 / 9.0;
+	// return float4(color, 1.0);
+	float3 color = 0.0;
+	float weightSum = 0.0;
+	float2 offsets[] = {
+		float2(0.0, 0.0),
+		float2(-1.0, -1.0), float2(-1.0, 1.0), float2(1.0, -1.0), float2(1.0, 1.0)//,
+		//float2(-1.0, 0.0), float2(1.0, 0.0), float2(0.0, -1.0), float2(0.0, 1.0)
+	};
+	//加权平均和 
+	for (int i = 0; i < 5; i++)
+	{
+		float3 c = GetSource(input.screenUV + offsets[i] * GetSourceTexelSize().xy * 2.0).rgb;
+		c = ApplyBloomThreshold(c);
+		float w = 1.0 / (Luminance(c) + 1.0);//Luminance-based weights. 亮度越高 权重越小 减少Bloom的闪烁问题
+		color += c * w;
+		weightSum += w;
+	}
+	color /= weightSum;
+	return float4(color, 1.0);
+}
+
+float4 BloomScatterFinalPassFragment(Varyings input) : SV_TARGET
+{
+	float3 lowRes;
+	if (_BloomBicubicUpsampling) {
+		lowRes = GetSourceBicubic(input.screenUV).rgb;
+	}
+	else {
+		lowRes = GetSource(input.screenUV).rgb;
+	}
+	float3 highRes = GetSource2(input.screenUV).rgb;
+	lowRes += highRes - ApplyBloomThreshold(highRes);
+	return float4(lerp(highRes, lowRes, _BloomIntensity), 1.0);
 }
 
 #endif

@@ -13,8 +13,8 @@ public class GameLauncher : MonoBehaviour
         for (int i = 0; i < 100; i++)
         {
             pos = Vector3.zero;
-            pos.x += i / 10 * 2;
-            pos.z += i % 10 * 2;
+            pos.x += i / 10 * 2;//每满10 值加1
+            pos.z += i % 10 * 2;//0~9乘以2
 
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             go.GetComponent<Renderer>().sharedMaterial = mat;

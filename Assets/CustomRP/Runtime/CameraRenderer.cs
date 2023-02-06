@@ -18,9 +18,15 @@ public partial class CameraRenderer
     Lighting lighting = new Lighting();
 
     PostFXStack postFXStack = new PostFXStack();
+    
     private static int frame_buffer_id = Shader.PropertyToID("_CameraFrameBuffer");
 
-    public void Render(ScriptableRenderContext context, Camera camera, bool useDynamicBatching, bool useGPUInstancing, bool useLightsPerObject, ShadowSettings shadowSettings, PostFXSettings postFXSettings)
+    private bool useHDR;
+
+    public void Render(
+        ScriptableRenderContext context, Camera camera, bool allowHDR,
+        bool useDynamicBatching, bool useGPUInstancing, bool useLightsPerObject, 
+        ShadowSettings shadowSettings, PostFXSettings postFXSettings)
     {
         this.context = context;
         this.camera = camera;
@@ -33,10 +39,12 @@ public partial class CameraRenderer
             return;
         }
 
+        useHDR = allowHDR && camera.allowHDR;
+
         buffer.BeginSample(SampleName);
         ExecuteBuffer();
         lighting.Setup(context, cullingResults, shadowSettings, useLightsPerObject);//CPU将光源数据发送到GPU
-        postFXStack.Setup(context, camera, postFXSettings);
+        postFXStack.Setup(context, camera, postFXSettings, useHDR);
         buffer.EndSample(SampleName);
         
         SetUp();//将相机数据发送到GPU clear
@@ -103,7 +111,11 @@ public partial class CameraRenderer
             {
                 clearFlags = CameraClearFlags.Color;
             }
-            buffer.GetTemporaryRT(frame_buffer_id, camera.pixelWidth, camera.pixelHeight, 32, FilterMode.Bilinear, RenderTextureFormat.Default);
+            buffer.GetTemporaryRT(
+                frame_buffer_id, camera.pixelWidth, camera.pixelHeight, 
+                32, FilterMode.Bilinear, 
+                useHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default
+                );
             buffer.SetRenderTarget(frame_buffer_id, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store);
         }
         

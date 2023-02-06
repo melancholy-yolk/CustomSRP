@@ -21,9 +21,12 @@ public partial class PostFXStack
     {
         BloomHorizontal,
         BloomVertical,
-        BloomCombine,
+        BloomAdd,
+        BloomScatter,
+        BloomScatterFinal,
         BloomPrefilter,
         Copy,
+        BloomPrefilterFireflies,
     }
 
     int bloom_bicubic_upsampling_id = Shader.PropertyToID("_BloomBicubicUpsampling");
@@ -36,6 +39,8 @@ public partial class PostFXStack
     private const int maxBloomPyramidLevels = 16;
     private int bloomPyramidId;
 
+    private bool useHDR;
+    
     public PostFXStack()
     {
         bloomPyramidId = Shader.PropertyToID("_BloomPyramid0");
@@ -45,11 +50,12 @@ public partial class PostFXStack
         }
     }
     
-    public void Setup(ScriptableRenderContext context, Camera camera, PostFXSettings settings)
+    public void Setup(ScriptableRenderContext context, Camera camera, PostFXSettings settings, bool useHDR)
     {
         this.context = context;
         this.camera = camera;
         this.settings = camera.cameraType <= CameraType.SceneView ? settings : null;
+        this.useHDR = useHDR;
         
         ApplySceneViewState();
     }
@@ -85,20 +91,24 @@ public partial class PostFXStack
             return;
         }
 
-        // 亮度阈值曲线计算参数
-        Vector4 threshold;
-        threshold.x = Mathf.GammaToLinearSpace(bloom.threshold);
-        threshold.y = threshold.x * bloom.thresholdKnee;
-        threshold.z = 2f * threshold.y;
-        threshold.w = 0.25f / (threshold.y + 0.00001f);
-        threshold.y -= threshold.x;
-        buffer.SetGlobalVector(bloom_threshold_id, threshold);
+        {
+            // 亮度阈值曲线计算参数
+            Vector4 threshold;
+            threshold.x = Mathf.GammaToLinearSpace(bloom.threshold);
+            threshold.y = threshold.x * bloom.thresholdKnee;
+            threshold.z = 2f * threshold.y;
+            threshold.w = 0.25f / (threshold.y + 0.00001f);
+            threshold.y -= threshold.x;
+            buffer.SetGlobalVector(bloom_threshold_id, threshold);
+        }
         
-        RenderTextureFormat format = RenderTextureFormat.Default;
+        RenderTextureFormat format = useHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default;
         
         // 预过滤 以一半分辨率作为起点进行bloom的金字塔
         buffer.GetTemporaryRT(bloom_prefilter_id, width, height, 0, FilterMode.Bilinear, format);
-        Draw(sourceId, bloom_prefilter_id, Pass.BloomPrefilter);//预先进行一次降采样 降低bloom的消耗
+        Draw(
+            sourceId, bloom_prefilter_id, 
+            bloom.fadeFireFlies ? Pass.BloomPrefilterFireflies : Pass.BloomPrefilter);//预先进行一次降采样 降低bloom的消耗
         width /= 2;
         height /= 2;
         
@@ -131,8 +141,25 @@ public partial class PostFXStack
 
         // 上采样过程是否采用三线性过滤
         buffer.SetGlobalFloat(bloom_bicubic_upsampling_id, bloom.bicubicUpsampling ? 1f : 0f);
-        buffer.SetGlobalFloat(bloom_intensity_id, 1f);
-        if (i > 1)
+        //buffer.SetGlobalFloat(bloom_intensity_id, 1f);
+
+        Pass combinePass, finalPass;
+        float finalIntensity;
+        if (bloom.mode == PostFXSettings.BloomSettings.Mode.Additive)
+        {
+            combinePass = finalPass = Pass.BloomAdd;
+            buffer.SetGlobalFloat(bloom_intensity_id, 1f);
+            finalIntensity = bloom.intensity;
+        }
+        else
+        {
+            combinePass = Pass.BloomScatter;
+            finalPass = Pass.BloomScatterFinal;
+            buffer.SetGlobalFloat(bloom_intensity_id, bloom.scatter);
+            finalIntensity = Mathf.Min(bloom.intensity, 0.95f);
+        }
+        
+        if (i > 1)//至少两次下采样过程 pyramid 0-1 2-3
         {
             buffer.ReleaseTemporaryRT(fromId - 1);
             toId -= 5;
@@ -140,7 +167,7 @@ public partial class PostFXStack
             for (i -= 1; i > 0; i--)
             {
                 buffer.SetGlobalTexture(fx_source2_id, toId + 1);
-                Draw(fromId, toId, Pass.BloomCombine);
+                Draw(fromId, toId, combinePass);
                 buffer.ReleaseTemporaryRT(fromId);
                 buffer.ReleaseTemporaryRT(toId + 1);
                 fromId = toId;
@@ -152,9 +179,9 @@ public partial class PostFXStack
             buffer.ReleaseTemporaryRT(bloomPyramidId);
         }
         
-        buffer.SetGlobalFloat(bloom_intensity_id, bloom.intensity);
+        buffer.SetGlobalFloat(bloom_intensity_id, finalIntensity);
         buffer.SetGlobalTexture(fx_source2_id, sourceId);
-        Draw(fromId, BuiltinRenderTextureType.CameraTarget, Pass.BloomCombine);
+        Draw(fromId, BuiltinRenderTextureType.CameraTarget, finalPass);
         buffer.ReleaseTemporaryRT(fromId);
         
         buffer.EndSample("Bloom");
