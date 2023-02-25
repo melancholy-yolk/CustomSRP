@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,7 +9,7 @@ public class PostFXSettings : ScriptableObject
     [SerializeField]
     private Shader shader = default;
 
-    [System.NonSerialized]
+    [NonSerialized]
     private Material material;
 
     public Material Material
@@ -24,7 +25,8 @@ public class PostFXSettings : ScriptableObject
         }
     }
 
-    [System.Serializable]
+    #region Bloom
+    [Serializable]
     public struct BloomSettings
     {
         /// <summary>
@@ -74,4 +76,116 @@ public class PostFXSettings : ScriptableObject
     };
     
     public BloomSettings Bloom => bloom;
+    #endregion
+
+    #region Color Adjustments
+    
+    [Serializable]
+    public struct ColorAdjustmentsSettings
+    {
+        public float postExposure;
+
+        [Range(-100f, 100f)]
+        public float contrast;
+
+        [ColorUsage(false, true)]
+        public Color colorFilter;
+
+        [Range(-180f, 180f)]
+        public float hueShift;
+        
+        [Range(-100f, 100f)]
+        public float saturation;
+    }
+
+    [SerializeField]
+    private ColorAdjustmentsSettings colorAdjustments = new ColorAdjustmentsSettings
+    {
+        colorFilter = Color.white
+    };
+
+    public ColorAdjustmentsSettings ColorAdjustments => colorAdjustments;
+
+    #endregion
+    
+    #region Tone Mapping
+    [Serializable]
+    public struct ToneMappingSettings
+    {
+        public enum Mode
+        {
+            None,
+            ACES,
+            Neutral,
+            Reinhard,
+        }
+
+        public Mode mode;
+    }
+
+    [SerializeField]
+    private ToneMappingSettings toneMapping = default;
+
+    public ToneMappingSettings ToneMapping => toneMapping;
+    #endregion
+
+    #region White Balance
+
+    [Serializable]
+    public struct WhiteBalanceSettings
+    {
+        [Range(-100f, 100f)]
+        public float temperature, tint;
+    }
+
+    [SerializeField]
+    private WhiteBalanceSettings whiteBalance = default;
+
+    public WhiteBalanceSettings WhiteBalance => whiteBalance;
+
+    #endregion
+
+    #region Split Toning
+
+    [Serializable]
+    public struct SplitToningSettings
+    {
+        [ColorUsage(false)]
+        public Color shadows, highlights;
+
+        [Range(-100f, 100f)]
+        public float balance;
+    }
+
+    [SerializeField]
+    private SplitToningSettings splitToning = new SplitToningSettings
+    {
+        shadows = Color.gray,
+        highlights = Color.gray
+    };
+
+    public SplitToningSettings SplitToning => splitToning;
+
+    #endregion
+
+    #region Channel Mixer
+
+    [Serializable]
+    public struct ChannelMixerSettings
+    {
+        public Vector3 red, green, blue;
+    }
+
+    [SerializeField]
+    private ChannelMixerSettings channelMixer = new ChannelMixerSettings
+    {
+        red = Vector3.right,
+        green = Vector3.up,
+        blue = Vector3.forward
+    };
+
+    public ChannelMixerSettings ChannelMixer => channelMixer;
+
+    #endregion
+
 }

@@ -9,7 +9,7 @@ Material:
   m_PrefabAsset: {fileID: 0}
   m_Name: unlit_shadow
   m_Shader: {fileID: 4800000, guid: 8b4dc1216d62a8f46b7fedba72ca8094, type: 3}
-  m_ShaderKeywords: _CLIPPING _SHADOWS_CLIP
+  m_ShaderKeywords: _SHADOWS_CLIP
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -61,7 +61,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats:
     - _BumpScale: 1
-    - _Clipping: 1
+    - _Clipping: 0
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
     - _DstBlend: 0

@@ -15,6 +15,18 @@ SAMPLER(sampler_linear_clamp);
 
 float4 _PostFXSource_TexelSize;// x = 1/width y = 1/height
 
+bool _BloomBicubicUpsampling;
+float _BloomIntensity;
+// x = t
+// y = -t + tk
+// z = 2tk
+// w = 1.0 / (4tk + 0.00001)
+float4 _BloomThreshold;// knee curve
+float4 _ColorAdjustments;// post-exposure contrast hue-shift saturation
+float4 _ColorFilter;
+float4 _WhiteBalance;
+float4 _SplitToningShadows, _SplitToningHighlights;
+float4 _ChannelMixerRed, _ChannelMixerGreen, _ChannelMixerBlue;
 
 float4 GetSourceBicubic(float2 screenUV)
 {
@@ -101,9 +113,6 @@ float4 BloomVerticalPassFragment(Varyings input) : SV_Target
 	return float4(color, 1.0);
 }
 
-bool _BloomBicubicUpsampling;
-float _BloomIntensity;
-
 float4 BloomCombinePassFragment(Varyings input) : SV_Target
 {
 	float3 lowRes;
@@ -130,14 +139,6 @@ float4 BloomScatterPassFragment (Varyings input) : SV_TARGET {
 	float3 highRes = GetSource2(input.screenUV).rgb;
 	return float4(lerp(highRes, lowRes, _BloomIntensity), 1.0);
 }
-
-
-
-// x = t
-// y = -t + tk
-// z = 2tk
-// w = 1.0 / (4tk + 0.00001)
-float4 _BloomThreshold;
 
 float3 ApplyBloomThreshold(float3 color)
 {
@@ -204,6 +205,107 @@ float4 BloomScatterFinalPassFragment(Varyings input) : SV_TARGET
 	float3 highRes = GetSource2(input.screenUV).rgb;
 	lowRes += highRes - ApplyBloomThreshold(highRes);
 	return float4(lerp(highRes, lowRes, _BloomIntensity), 1.0);
+}
+
+float3 ColorGradePostExposure(float3 color)//曝光度
+{
+	return color * _ColorAdjustments.x;
+}
+
+float3 ColorGradeWhiteBalance(float3 color)//白平衡 调整画面色温 偏冷或偏暖
+{
+	color = LinearToLMS(color);
+	color *= _WhiteBalance.rgb;
+	return LMSToLinear(color);
+}
+
+float3 ColorGradingContrast(float3 color)//对比度
+{
+	color = LinearToLogC(color);
+	color = (color - ACEScc_MIDGRAY) * _ColorAdjustments.y + ACEScc_MIDGRAY;
+	return LogCToLinear(color);
+}
+
+float3 ColorGradeColorFilter(float3 color)
+{
+	return color * _ColorFilter.rgb;
+}
+
+float3 ColorGradingHueShift(float3 color)//色调偏移
+{
+	color = RgbToHsv(color);
+	float hue = color.x + _ColorAdjustments.z;
+	color.x = RotateHue(hue, 0.0, 1.0);
+	return HsvToRgb(color);
+}
+
+float3 ColorGradingSaturation(float3 color)//饱和度
+{
+	float luminance = Luminance(color);
+	return (color - luminance) * _ColorAdjustments.w + luminance;
+}
+
+float3 ColorGradeSplitToning(float3 color)//色彩分离 使图像的暗部与亮部趋向于两种指定的颜色
+{
+	color = PositivePow(color, 1.0 / 2.2);
+	float t = saturate(Luminance(saturate(color)) + _SplitToningShadows.w);
+	float3 shadows = lerp(0.5, _SplitToningShadows.rgb, 1.0 - t);
+	float3 highlights = lerp(0.5, _SplitToningHighlights.rgb, t);//片元的亮度值越大 
+	color = SoftLight(color, shadows);
+	color = SoftLight(color, highlights);
+	return PositivePow(color, 2.2);
+}
+
+float3 ColorGradingChannelMixer(float3 color)
+{
+	return mul(float3x3(_ChannelMixerRed.rgb, _ChannelMixerGreen.rgb, _ChannelMixerBlue.rgb), color);
+}
+
+float3 ColorGrade(float3 color)
+{
+	color = min(color, 60.0);
+	color = ColorGradePostExposure(color);
+	color = ColorGradeWhiteBalance(color);
+	color = ColorGradingContrast(color);
+	color = ColorGradeColorFilter(color);
+	color = max(color, 0.0);
+	color = ColorGradeSplitToning(color);
+	color = ColorGradingChannelMixer(color);
+	color = max(color, 0.0);
+	color = ColorGradingHueShift(color);
+	color = ColorGradingSaturation(color);
+	return max(color, 0.0);
+}
+
+float4 ToneMappingNonePassFragment(Varyings input) : SV_TARGET
+{
+	float4 color = GetSource(input.screenUV);
+	color.rgb = ColorGrade(color.rgb);
+	return color;
+}
+
+float4 ToneMappingACESPassFragment(Varyings input) : SV_TARGET
+{
+	float4 color = GetSource(input.screenUV);
+	color.rgb = ColorGrade(color.rgb);
+	color.rgb = AcesTonemap(unity_to_ACES(color.rgb));
+	return color;
+}
+
+float4 ToneMappingNeutralPassFragment(Varyings input) : SV_TARGET
+{
+	float4 color = GetSource(input.screenUV);
+	color.rgb = ColorGrade(color.rgb);
+	color.rgb = NeutralTonemap(color.rgb);
+	return color;
+}
+
+float4 ToneMappingReinhardPassFragment(Varyings input) : SV_TARGET
+{
+	float4 color = GetSource(input.screenUV);
+	color.rgb = ColorGrade(color.rgb);
+	color.rgb /= color.rgb + 1.0;
+	return color;
 }
 
 #endif

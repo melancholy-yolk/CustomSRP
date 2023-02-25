@@ -98,5 +98,50 @@
                 #pragma fragment BloomPrefilterFirefliesPassFragment
             ENDHLSL
         }
+
+        Pass
+        {
+            Name "Tone Mapping None"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment ToneMappingNonePassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Tone Mapping ACES"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment ToneMappingACESPassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Tone Mapping Neutral"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment ToneMappingNeutralPassFragment
+            ENDHLSL
+        }
+        
+        Pass
+        {
+            Name "Tone Mapping Reinhard"
+            
+            HLSLPROGRAM
+                #pragma target 3.5
+                #pragma vertex DefaultPassVertex
+                #pragma fragment ToneMappingReinhardPassFragment
+            ENDHLSL
+        }
+        
     }
 }
